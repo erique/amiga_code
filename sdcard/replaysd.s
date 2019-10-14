@@ -38,7 +38,7 @@
 ENABLE_KPRINTF
 
 	INCDIR 	"Include3.0:Include/"		; from devpac3
-	INCLUDE	exec/exec_lib.i
+	INCLUDE	lvo/exec_lib.i
 	INCLUDE exec/errors.i
 	INCLUDE exec/io.i
 	INCLUDE exec/memory.i
@@ -49,7 +49,7 @@ ENABLE_KPRINTF
 	INCLUDE libraries/configregs.i
 	INCLUDE libraries/configvars.i
 	INCLUDE libraries/expansion.i
-	INCLUDE libraries/expansion_lib.i
+	INCLUDE lvo/expansion_lib.i
 
 	INCDIR	"Devt:sddriver/"
 	INCLUDE kprintf.i
@@ -190,6 +190,13 @@ SPI_DEASSERT_CS macro
 	move.w	#$FFFF,SPI_CS(a6)
 	endm
 	
+CALLEXEC	MACRO   ; functionOffset
+	IFGT NARG-1
+	    FAIL    !!! CALLEXEC MACRO - too many arguments !!!
+	ENDC
+	LINKLIB	_LVO\1,$4.w
+	ENDM
+
 ; ------------------------------
 ;	     SHELL
 ; ------------------------------
@@ -299,7 +306,7 @@ find_card:
 	movem.l	d1-d6/a0-a6,-(SP)
 	kprintf "[SDDriver] Looking for replaysd card"
 	lea	lib_expansion_name(pc),a1
-	move.l	a1,d0
+	moveq.l	#36,d0
 	CALLEXEC OpenLibrary
 	tst.l	d0
 	bne.s	.findconfig
@@ -338,9 +345,11 @@ find_card:
 	kprintf "[SDDriver][ERROR] no card found!"
 	moveq	#0,d0
 .cleanup:
+	move.l	d0,-(sp)
 	move.l	a6,a1
 	CALLEXEC CloseLibrary
-	jsr	_LVOCloseLibrary(a4)
+;	jsr	_LVOCloseLibrary(a4)
+	move.l	(sp)+,d0
 	movem.l	(SP)+,d1-d6/a0-a6
 	rts
 
@@ -1028,7 +1037,7 @@ init_device:
 	move.l	a4,-(SP)
 	move.l	d0,a4
 	bsr.w	find_card
-	cmp.b	#0,d0
+	tst.l	d0
 	beq.w	.error
 	lea	device_ctx(pc),a0
 	move.l	a4,d0
@@ -1043,8 +1052,10 @@ init_device:
 	move.l	#FILE_VERSION<<16+FILE_REVISION,LIB_VERSION(a4)
 	lea	s_idstring(pc),a0
 	move.l	a0,LIB_IDSTRING(a4)
-	move.l	d0,a4
-	moveq	#1,d0
+;	move.l	d0,a4
+	move.l	a4,d0
+;	moveq	#1,d0
+	bra.b	.finish
 .error:
 	kprintf	"[SDDRIVER] failed init_device"
 	moveq	#0,d0
@@ -1133,6 +1144,7 @@ begin_io:
 	move.b	#0,IO_ERROR(a1)
 	clr.l	d0
 	move.w	IO_COMMAND(a1),d0
+	kprintf	"IO_COMMAND = %ld",d0
 	cmp.w	#24,d0
 	blt.s	.do_io
 	kprintf "skipping command"
@@ -1179,13 +1191,22 @@ io_func_table:
 	dc.w	cmd_invalid-io_func_table		; TD_EJECT		- *
 io_func_table_end:
 
+cmd_reply
+	btst	#IOB_QUICK,IO_FLAGS(a1)
+	bne.b	.quick
+
+	; ReplyMsg(message:a1)
+	LINKLIB	_LVOReplyMsg,$4.w
+.quick
+	rts
+
 ; ----------
 ; cmd_invalid
 ; ----------
 cmd_invalid:
 	kprintf "[SDDriver] cmd invalid"
 	move.b #0,IO_ERROR(a1)
-	rts
+	bra	cmd_reply
 
 ; ----------
 ; cmd_reset
@@ -1193,15 +1214,15 @@ cmd_invalid:
 cmd_reset:
 	kprintf "[SDDriver] cmd reset"
 	clr.l	d0
-	rts
+	bra	cmd_reply
 
 ; ----------
 ; cmd_read
 ; ----------
 cmd_read:
-	kprintf "[SDDriver] cmd read"
+	kprintf "[SDDriver] cmd read %lx / %lx",IO_OFFSET(a1),IO_LENGTH(a1)
 	clr.l	d0
-	rts
+	bra	cmd_reply
 
 ; ----------
 ; td_get_drive_type
@@ -1210,16 +1231,16 @@ td_get_drive_type:
 	kprintf "[SDDriver] get drive type"
 	move.w 	#IOERR_NOCMD,IO_ERROR(a2)
 	move.l 	#DG_DIRECT_ACCESS,IO_ACTUAL(a2)
-	rts
+	bra	cmd_reply
 
 ; ----------
 ; td_protect
 ; ----------
 td_protect:	
-	kprintf "[SDDriver] td prorect"
+	kprintf "[SDDriver] td protect"
 	clr.l	d0
 	move.l	d0,IO_ACTUAL(a2)
-	rts
+	bra	cmd_reply
 		
 ; ----------
 ; cmd_write
@@ -1227,7 +1248,7 @@ td_protect:
 cmd_write:
 	kprintf "[SDDriver] cmd write"
 	clr.l	d0
-	rts
+	bra	cmd_reply
 	
 ; ----------
 ; cmd_stop
@@ -1235,7 +1256,7 @@ cmd_write:
 cmd_stop:
 	kprintf "[SDDriver] cmd stop"
 	clr.l	d0
-	rts
+	bra	cmd_reply
 	
 ; ----------
 ; cmd_start
@@ -1243,14 +1264,14 @@ cmd_stop:
 cmd_start:
 	kprintf "[SDDriver] cmd start"
 	clr.l	d0
-	rts	
+	bra	cmd_reply
 
 ; ----------
 ; td_motor
 ; ----------
 td_motor:
 	kprintf "[SDDriver] td motor"
-	rts
+	bra	cmd_reply
 
 ; ----------
 ; cmd_flush
@@ -1258,7 +1279,7 @@ td_motor:
 cmd_flush:
 	kprintf "[SDDriver] cmd flush"
 	clr.l	d0
-	rts
+	bra	cmd_reply
 
 ; ------------------------------
 ; Memory Functions

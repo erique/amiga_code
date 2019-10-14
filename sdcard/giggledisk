@@ -1,0 +1,3 @@
+stack 128000
+c:giggledisk ram:sd.device
+avail flush
