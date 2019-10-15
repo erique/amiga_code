@@ -618,11 +618,11 @@ CmdRemove
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdChangeNum
-		kprintf	"CmdChangenum"
+		kprintf	"CmdChangeNum"
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdChangeState
-		kprintf	"CmdChangestate"
+		kprintf	"CmdChangeState"
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdProtStatus
@@ -630,31 +630,31 @@ CmdProtStatus
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdRawRead
-		kprintf	"CmdRawread"
+		kprintf	"CmdRawRead"
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdRawWrite
-		kprintf	"CmdRawwrite"
+		kprintf	"CmdRawWrite"
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdGetDriveType
-		kprintf	"CmdGetdrivetype"
+		kprintf	"CmdGetDriveType"
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdGetNumTracks
-		kprintf	"CmdGetnumtracks"
+		kprintf	"CmdGetNumTracks"
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdAddChangeInt
-		kprintf	"CmdAddchangeint"
+		kprintf	"CmdAddChangeInt"
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdRemChangeInt
-		kprintf	"CmdRemchangeint"
+		kprintf	"CmdRemChangeInt"
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdGetGeometry
-		kprintf	"CmdGetgeometry"
+		kprintf	"CmdGetGeometry"
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdEject
