@@ -626,8 +626,8 @@ CmdChangeState
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdProtStatus
-		kprintf	"CmdProtstatus"
-		move.b	#IOERR_NOCMD,IO_ERROR(a1)
+		kprintf	"CmdProtStatus"
+		move.l	#0,IO_ACTUAL(a1)
 		bra	TermIO
 CmdRawRead
 		kprintf	"CmdRawRead"
