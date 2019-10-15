@@ -104,6 +104,8 @@ VDATE	MACRO
 
 		APTR	g_BoardAddr
 
+		ULONG	g_MotorState
+
 		UBYTE	g_CardType
 
 		ALIGNLONG
@@ -594,9 +596,15 @@ CmdFlush
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdMotor
-		kprintf	"CmdMotor"
-		move.b	#IOERR_NOCMD,IO_ERROR(a1)
-		bra	TermIO
+		kprintf	"CmdMotor %lx / %lx",g_MotorState(a6),IO_LENGTH(a1)
+		move.l	g_MotorState(a6),IO_ACTUAL(a1)
+		tst.l	IO_LENGTH(a1)
+		beq.b	.done
+		move.l	#1,g_MotorState(a6)
+		bra.b	.done
+.off		move.l	#0,g_MotorState(a6)
+.done		bra	TermIO
+
 CmdSeek
 		kprintf	"CmdSeek"
 		clr.l	IO_ACTUAL(a1)
