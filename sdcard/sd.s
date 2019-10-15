@@ -698,12 +698,144 @@ CmdFormat64
 		kprintf	"CmdFormat64 (%08lx:%08lx, %lx)",IO_ACTUAL(a1),IO_OFFSET(a1),IO_LENGTH(a1)
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
-CmdSCSI
-		kprintf	"CmdSCSI"
+
+;#define OPERATIONCODE_READ_FORMAT_CAPACITY 0x23
+;#define OPERATIONCODE_READ_CAPACITY 0x25
+;#define OPERATIONCODE_READ_10 0x28
+;#define OPERATIONCODE_WRITE_10 0x2a
+;#define OPERATIONCODE_PREVENT_ALLOW_REMOVAL 0x1e
+;#define OPERATIONCODE_REQUEST_SENSE 0x03
+
+OPERATIONCODE_TEST_UNIT_READY  = $00
+OPERATIONCODE_READ_CAPACITY = $25
+OPERATIONCODE_MODE_SENSE_6 = $1a
+OPERATIONCODE_INQUIRY = $12
+
+CmdSCSI		movem.l	d0-a6,-(sp)
+
+		move.l	IO_DATA(a1),a0
+		kprintf	"CmdSCSI (IO_LENGTH = %lx ; CMD = %lx ; LEN = %lx)",IO_LENGTH(a1),scsi_Command(a0),scsi_CmdLength(a0)
+
+		cmp.l	#scsi_SIZEOF,IO_LENGTH(a1)
+		bhs.b	.sizeok
+		kprintf	"   ***** ILLEGAL SIZE = %lx",IO_LENGTH(a1)
+
+.sizeok		move.l	IO_DATA(a1),a0
+		move.l	scsi_Command(a0),d0
+		beq.b	.badaddress
+		cmp.l	#6,scsi_CmdLength(a0)
+		blo	.badlength
+
+		clr.l	scsi_Actual(a0)
+
+		move.l	d0,a2
+		moveq.l	#0,d0
+		move.b	(a2),d0
+		kprintf	"    SCSI = %lx",d0
+		cmp.b	#OPERATIONCODE_READ_CAPACITY,d0
+		beq	.readcapacity
+		cmp.b	#OPERATIONCODE_MODE_SENSE_6,d0
+		beq	.modesense6
+		cmp.b	#OPERATIONCODE_INQUIRY,d0
+		beq	.inquiry
+		cmp.b	#OPERATIONCODE_TEST_UNIT_READY,d0
+		beq	.done
+
+		kprintf	"    Unknown SCSI command"
+
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
+.done		movem.l	(sp)+,d0-a6
 		bra	TermIO
 
+.badaddress	kprintf	"    IOERR_BADADDRESS"
+		move.b	#IOERR_BADADDRESS,IO_ERROR(a1)
+		bra	.done
 
+.badlength	kprintf	"    IOERR_BADLENGTH"
+		move.b	#IOERR_BADLENGTH,IO_ERROR(a1)
+		bra	.done
+
+.readcapacity	kprintf	"    OPERATIONCODE_READ_CAPACITY"
+		tst.l	2(a2)
+		bne.b	.nopmi
+		btst	#0,8(a2)
+		bne.b	.nopmi
+
+		cmp.l	#4+4,scsi_Length(a0)
+		blo	.badlength
+
+		move.l	scsi_Data(a0),a3
+		move.l	g_NumBlocks(a6),(a3)
+		subq.l	#1,(a3)+
+		move.l	g_BytesPerBlock(a6),(a3)
+
+;		move.l	#4+4,IO_ACTUAL(a1)
+		move.l	#4+4,scsi_Actual(a0)
+		
+		bra	.done
+
+.nopmi		kprintf	"    PMI obsolete"
+		move.b	#HFERR_BadStatus,IO_ERROR(a1)
+		bra	.done
+
+.modesense6	
+		moveq.l	#0,d0
+		move.w	2(a2),d0
+		kprintf	"    OPERATIONCODE_MODE_SENSE_6 (%lx)",d0
+
+		move.b	#HFERR_BadStatus,IO_ERROR(a1)
+		bra	.done
+
+.inquiry	kprintf	"    OPERATIONCODE_INQUIRY (size = %lx)",scsi_Length(a0)
+		move.l	scsi_Length(a0),d0
+		cmp.l	#.inquirysize,d0
+		blo.b	.shortdata
+
+		move.l	#.inquirysize,d0
+		kprintf	"    enough space for %lx",d0
+
+.shortdata	kprintf	"    copying $%lx bytes",d0
+		move.l	scsi_Data(a0),a3
+		lea	.inquirydata(pc),a4
+		move.l	d0,scsi_Actual(a0)
+		bra.b	.start
+.copyinquiry	move.b	(a4)+,(a3)+
+.start		dbf	d0,.copyinquiry
+
+		bra	.done
+
+.inquirydata
+    ; byte 0
+    dc.b $00           ; PERIPHERALQUALIFIER(3) | PERIPHERALDEVICETYPE(5)
+    ; byte 1
+    			; RMB(1) | reserved(7)
+    dc.b $80           ; This is a REMOVABLE device
+    ; byte 2
+    dc.b $02           ; $02 = "Obsolete", $06 = The device complies to ANSI INCITS 513-2015 (SPC-4)
+    ; byte 3
+    			; obsolete(2) | NORMACA(1) | HISUP(1) | RESPONSEDATAFORMAT(4)
+    dc.b $02           ; Response Data Format: SPC-2/SPC-3/SPC-4 (2)
+    ; byte 4
+    dc.b .inquirysize-5 ; The ADDITIONAL LENGTH field indicates the length in bytes of the remaining standard INQUIRY data
+    ; byte 5
+			; SCCS(1) | _ACC(1) | TPGS(2) | TPC(1) | reserved(2) | PROTECT(1)
+    dc.b $00           ; is NOT supported
+    ; byte 6
+			; BQUE(1) | ENCSERV(1) | VS1(1) | MULTIP(1) | obsolete(4)
+    dc.b $00           ; is NOT supported
+    ; byte 7
+    			; obsolete(6) | CMDQUE(1) | VS2(1)
+    dc.b $00           ; is NOT supported
+    ; byte 8-15
+    dc.b 'A','r','c','a','d','e',' ',' '  ; Vendor ID
+    ; byte 16-31
+    dc.b 'F','P','G','A','A','r','c','a','d','e','R','e','p','l','a','y'  ; Product ID
+    ; byte 32-35
+    dc.b '1','.','0','0'                  ; Revision level
+    ; byte 36-43
+    dc.b '1','2','3','4','5','6','7','8'
+.inquiryend:
+.inquirysize = .inquiryend-.inquirydata
 ; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 ;-----------------------------------------------------------
