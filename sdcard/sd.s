@@ -107,6 +107,8 @@ VDATE	MACRO
 		ULONG	g_MotorState
 
 		UBYTE	g_CardType
+		ULONG	g_NumBlocks
+		ULONG	g_BytesPerBlock
 
 		ALIGNLONG
 		LABEL	GLOBALDATA_SIZE
@@ -259,7 +261,12 @@ OpenDevice:	; ( unitnum:d0, flags:d1, iob:a1, device:a6 )
 		beq	.failed
 
 		bsr	Card_Init
+		tst.b	g_CardType(a6)
+		beq.b	.nocard
 
+		bsr	Card_GetCapacity
+
+.nocard
 		clr.b	IO_ERROR(a1)
 		move.b	#NT_REPLYMSG,LN_TYPE(a1)
 
@@ -1279,7 +1286,19 @@ Card_GetCapacity
 
 .not20		kprintf	"CARD:Unknown CSD version!"
 
-.done		movem.l	(sp)+,d0-a6
+.done		mulu.l	d3,d5:d4
+		kprintf	"    capacity in bytes = %08lx.%08lx",d5,d4
+		and.l	#(1<<9)-1,d5
+		swap	d5
+		lsl.l	#7,d5
+		lsr.l	#8,d4
+		lsr.l	d4
+		or.l	d4,d5
+		kprintf	"    capacity in blocks = %08lx (512 bytes)",d5
+		move.l	d5,g_NumBlocks(a6)
+		move.l	#(1<<9),g_BytesPerBlock(a6)
+
+		movem.l	(sp)+,d0-a6
 		rts
 .csd		ds.b	16
 
