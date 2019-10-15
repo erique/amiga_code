@@ -428,7 +428,7 @@ BeginIO:	; ( iob: a1, device:a6 )
 .nsdcmd
 
 	kprintf	"NewStyleDevice"
-	bra	.nocmd
+;	bra	.nocmd
 
 	lea	.nsdtbl(pc),a0
 .next	move.l	(a0)+,d1
