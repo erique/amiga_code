@@ -1677,11 +1677,30 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 ;             pBuffer[offset] = rSPI(0xff);
 ;         }
 
-		move.w	#512-1,d6
-.byteLoop	moveq.l	#-1,d0
-		rSPI	d0
+
+	; 619,237 B/sec (128KB) at 50MHz
+	; 572,139 B/sec (128KB) at 55MHz
+	; 626,639 B/sec (128KB) at 70MHz
+	; 629,145 B/sec (128KB) at 75MHz
+
+		move.w	#512-2,d6
+	; prolog
+		move.w	#$00ff,SPI_BYTE_REG(a5)	; only lower byte used
+.byteLoop	move.w	SPI_BYTE_REG(a5),d0
+		bmi.b	.byteLoop		; top-bit-set ? not ready..
+		move.w	#$00ff,SPI_BYTE_REG(a5)	; only lower byte used
 		move.b	d0,(a0)+
 		dbf	d6,.byteLoop
+	; epilog				
+.waitrdy	move.w	SPI_BYTE_REG(a5),d0
+		bmi.b	.waitrdy
+		move.b	d0,(a0)+
+
+;		move.w	#512-1,d6
+;.byteLoop	moveq.l	#-1,d0
+;		rSPI	d0
+;		move.b	d0,(a0)+
+;		dbf	d6,.byteLoop
 
 		moveq.l	#-1,d0
 		rSPI	d0	; // CRC hi
