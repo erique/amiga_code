@@ -701,7 +701,26 @@ CmdRead64
 
 CmdWrite64
 		kprintf	"CmdWrite64 (%08lx:%08lx, %lx)",IO_ACTUAL(a1),IO_OFFSET(a1),IO_LENGTH(a1)
-		move.b	#IOERR_NOCMD,IO_ERROR(a1)
+
+		move.l	IO_ACTUAL(a1),d1
+		and.l	#(1<<9)-1,d1
+		swap	d1
+		lsl.l	#7,d1
+		move.l	IO_OFFSET(a1),d0
+		lsr.l	#8,d0
+		lsr.l	#1,d0
+		or.l	d1,d0
+		move.l	IO_LENGTH(a1),d1
+		and.w	#~((1<<9)-1),d1
+		move.l	d1,IO_ACTUAL(a1)
+		lsr.l	#8,d1
+		lsr.l	#1,d1
+		move.l	IO_DATA(a1),a0
+		bsr	Card_WriteM
+
+		tst.b	d0
+		bne	SPI_Error
+
 		bra	TermIO
 CmdSeek64
 		kprintf	"CmdSeek64 (%08lx:%08lx, %lx)",IO_ACTUAL(a1),IO_OFFSET(a1),IO_LENGTH(a1)
