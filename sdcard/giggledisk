@@ -1,3 +1,4 @@
 stack 128000
-c:giggledisk ram:sd.device
+c:giggledisk ram:sd.device to ram:
 avail flush
+mount ram:GGD0
