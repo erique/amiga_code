@@ -796,10 +796,10 @@ CmdSCSI		movem.l	d0-a6,-(sp)
 		bra	.done
 
 .readcapacity	kprintf	"    OPERATIONCODE_READ_CAPACITY"
-		tst.l	2(a2)
-		bne.b	.nopmi
-		btst	#0,8(a2)
-		bne.b	.nopmi
+;		tst.l	2(a2)
+;		bne.b	.nopmi
+;		btst	#0,8(a2)
+;		bne.b	.nopmi
 
 		cmp.l	#4+4,scsi_Length(a0)
 		blo	.badlength
