@@ -65,6 +65,14 @@ rSPI_STATUS	MACRO
 		move.l	(sp)+,d0
 		ENDM
 
+rSPI_IRQ	MACRO
+		move.l	d0,-(sp)
+		moveq.l	#0,d0
+		move.w	SPI_IRQ_REG(a5),d0
+		kprintf	"SPI_IRQ_REG    = %lx",d0
+		move.l	(sp)+,d0
+		ENDM
+
 ; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 S:
 	IFD	ENABLE_KPRINTF
@@ -113,6 +121,8 @@ NUM_SECTORS = 1
 		beq	.noBoard
 
 		kprintf	"SPI @ %lx",d0
+
+		bsr	Card_EnableIRQ
 
 		movea.l	d0,a5
 
@@ -172,7 +182,13 @@ NUM_SECTORS = 1
 		kprintf	"g_WriteOps = %lx",g_WriteOps(a6)
 		kprintf	"g_WriteWaits = %lx",g_WriteWaits(a6)
 
-.done		kprintf	"done."
+.done
+		btst	#6,$bfe001
+		bne	.done
+
+		kprintf	"done."
+
+		bsr	Card_DisableIRQ
 
 		move.l	g_SegList(a6),a5
 		unlk	a5
@@ -182,7 +198,7 @@ NUM_SECTORS = 1
 
 .noBoard
 		kprintf	"GetBoardAddr failed"
-		bra.b	.done
+		bra	.done
 
 .cmpFailed	subq.l	#4,a0
 		move.l	a0,d0
@@ -231,10 +247,14 @@ kprintf_sectors	move.l	d0,d7
 		ULONG	g_MotorState
 
 		UBYTE	g_CardType
+		UWORD	g_CardStatus
 		ALIGNLONG
 
 		ULONG	g_NumBlocks
 		ULONG	g_BytesPerBlock
+
+		STRUCT	g_Level2Interrupt,IS_SIZE
+		STRUCT	g_CardInterrupt,IS_SIZE
 
 		ULONG	g_ReadOps
 		ULONG	g_ReadWaits
@@ -1063,8 +1083,8 @@ GetBoardAddr:	; ( device:a6 )
 
 SPI_STATUS_REG	= $0100
 SPI_BYTE_REG	= $0102
-SPI_CS		= $0104
-SPI_CLK_CNT	= $0106
+SPI_CS_REG	= $0104
+SPI_IRQ_REG	= $0106
 
 	BITDEF	STATUS,CDET,15
 	BITDEF	STATUS,READY,7
@@ -1075,6 +1095,9 @@ SPI_CLK_CNT	= $0106
 	BITDEF	STATUS,CLKDIV2,2
 	BITDEF	STATUS,CLKDIV1,1
 	BITDEF	STATUS,CLKDIV0,0
+
+	BITDEF	IRQ,ENABLE,1
+	BITDEF	IRQ,FLAG,0
 
 SYS_MAIN_CLK	= 28367516	; 28.367516 MHz
 SPI_MAIN_CLK	= (SYS_MAIN_CLK/2)
@@ -1156,6 +1179,131 @@ CMD63 = $7f        ; --
 ;		ENDM
 
 ; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Card_EnableIRQ
+		kprintf	"Card_EnableIRQ"
+		movem.l	d0-a6,-(sp)
+		lea	Card_ISR(pc),a0
+		lea	g_Level2Interrupt(a6),a1
+		lea	.Lvl2InterruptName(pc),a2
+		bsr	.setinterrupt
+
+		lea	CardHandler(pc),a0
+		lea	g_CardInterrupt(a6),a1
+		lea	.CardInterruptName(pc),a2
+		bsr	.setinterrupt
+
+	; AddIntServer(intNum:d0, interrupt:a1)
+		moveq.l	#INTB_PORTS,d0
+		lea	g_Level2Interrupt(a6),a1
+		LINKLIB	_LVOAddIntServer,g_ExecBase(a6) (d0,a1)
+
+		move.l	g_BoardAddr(a6),a5
+		move.w	#IRQF_ENABLE,SPI_IRQ_REG(a5)
+
+		movem.l	(sp)+,d0-a6
+		rts
+
+.setinterrupt	; ( a0 = ISR, a1 = Interrupt Structure, a2 = name, a6 = device)
+	
+		kprintf	"    IS @ %lx (%s) points to %lx/%lx",a1,a2,a0,a6
+
+		move.b	#NT_INTERRUPT,LN_TYPE(a1)
+		move.b	#0,LN_PRI(a1)
+		move.l	a2,LN_NAME(a1)
+		move.l	a6,IS_DATA(a1)
+		move.l	a0,IS_CODE(a1)
+		rts
+
+.Lvl2InterruptName	dc.b	'SPI Level2 Interrupt',0
+		even
+.CardInterruptName	dc.b	'SPI/SDCARD Soft-IRQ',0
+		even
+
+
+
+Card_DisableIRQ
+		kprintf	"Card_DisableIRQ"
+
+		movem.l	d0-a6,-(sp)
+
+		move.w	#~IRQF_ENABLE,SPI_IRQ_REG(a5)
+
+	; RemIntServer(intNum:d0, interrupt:a1)
+		moveq.l	#INTB_PORTS,d0
+		lea	g_Level2Interrupt(a6),a1
+		LINKLIB	_LVORemIntServer,g_ExecBase(a6) (d0,a1)
+
+		movem.l	(sp)+,d0-a6
+		rts
+
+
+Card_ISR	move.l	g_BoardAddr(a1),a5
+		move.w	SPI_IRQ_REG(a5),d0
+		and.w	#IRQF_ENABLE+IRQF_FLAG,d0
+		cmp.w	#IRQF_ENABLE+IRQF_FLAG,d0
+		bne.b	.notspi
+
+		move.w	#~IRQF_ENABLE,SPI_IRQ_REG(a5)	; disable irq and clear flag
+
+		move.l	g_ExecBase(a1),a6
+		lea	g_CardInterrupt(a1),a1
+		CALLLIB	_LVOCause (a1)
+
+		moveq.l	#1,d0	; clr Z = processed
+		rts
+
+.notspi		moveq.l	#0,d0	; set Z = not taken
+		rts
+
+CardHandler	kprintf	"CardHandler"
+		move.l	a6,-(sp)
+		move.l	a1,a6
+		move.l	g_BoardAddr(a6),a5
+
+		rSPI_STATUS
+		rSPI_IRQ
+
+		move.w	SPI_STATUS_REG(a5),d0
+		and.w	#STATUSF_CDET,d0
+		cmp.w	g_CardStatus(a6),d0
+		beq.b	.card_same
+
+		move.w	d0,g_CardStatus(a6)
+
+		btst	#STATUSB_CDET,d0
+		bne	.card_inserted
+
+		kprintf	"    card EJECTED"
+
+	; 	CLEAR ALL DATA
+
+.failed		clr.l	g_MotorState(a6)
+
+		clr.b	g_CardType(a6)
+		clr.w	g_CardStatus(a6)
+
+		clr.l	g_NumBlocks(a6)
+		clr.l	g_BytesPerBlock(a6)
+
+		bra	.out
+
+.card_inserted	kprintf "    card INSERTED"
+
+	; 	POPULATE ALL DATA
+
+		bsr	Card_Init
+
+		tst.b	g_CardType(a6)
+		beq	.failed
+
+		bsr	Card_GetCapacity
+		bra	.out
+
+.card_same	kprintf	"    card NOT CHANGED (bounce?)"
+.out		move.w	#IRQF_ENABLE,SPI_IRQ_REG(a5)	; enable and keep flag (if it changed while processing)
+		move.l	(sp)+,a6
+		rts
 
 ;-----------------------------------------------------------
 t dc.l	0
@@ -1256,11 +1404,11 @@ SPI_SetClkDiv	MACRO
 		ENDM
 
 SPI_EnableCard	MACRO
-		move.w	#0,SPI_CS(a5)
+		move.w	#0,SPI_CS_REG(a5)
 		ENDM
 
 SPI_DisableCard	MACRO
-		move.w	#1,SPI_CS(a5)
+		move.w	#1,SPI_CS_REG(a5)
 		ENDM
 
 Wait25us:	move.l	d0,-(sp)
