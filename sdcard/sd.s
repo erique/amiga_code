@@ -743,6 +743,7 @@ SPI_Error	kprintf	"SPI:Card result is %lx",d0
 ;#define OPERATIONCODE_PREVENT_ALLOW_REMOVAL 0x1e
 ;#define OPERATIONCODE_REQUEST_SENSE 0x03
 
+OPERATIONCODE_READ_10 = $28
 OPERATIONCODE_TEST_UNIT_READY  = $00
 OPERATIONCODE_READ_CAPACITY = $25
 OPERATIONCODE_MODE_SENSE_6 = $1a
@@ -759,7 +760,7 @@ CmdSCSI		movem.l	d0-a6,-(sp)
 
 .sizeok		move.l	IO_DATA(a1),a0
 		move.l	scsi_Command(a0),d0
-		beq.b	.badaddress
+		beq	.badaddress
 		cmp.l	#6,scsi_CmdLength(a0)
 		blo	.badlength
 
@@ -775,6 +776,8 @@ CmdSCSI		movem.l	d0-a6,-(sp)
 		beq	.modesense6
 		cmp.b	#OPERATIONCODE_INQUIRY,d0
 		beq	.inquiry
+		cmp.b	#OPERATIONCODE_READ_10,d0
+		beq	.read10
 		cmp.b	#OPERATIONCODE_TEST_UNIT_READY,d0
 		beq	.done
 
@@ -839,6 +842,22 @@ CmdSCSI		movem.l	d0-a6,-(sp)
 .copyinquiry	move.b	(a4)+,(a3)+
 .start		dbf	d0,.copyinquiry
 
+		bra	.done
+
+.read10		kprintf	"    OPERATIONCODE_READ_10"
+		move.l	2(a2),d0
+		moveq.l	#0,d1
+		move.w	7(a2),d1
+		kprintf	"    %lx %lx => %lx (%lx blocks)",d0,d1,scsi_Data(a0),scsi_Length(a0)
+		move.l	scsi_Length(a0),scsi_Actual(a0)
+		move.l	scsi_Data(a0),a0
+		bsr	Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
+		tst.b	d0
+		bne	.error
+		bra	.done
+
+.error		kprintf	"SPI:Card / SCSI result is %lx",d0
+		move.b	#HFERR_BadStatus,IO_ERROR(a1)
 		bra	.done
 
 .inquirydata
