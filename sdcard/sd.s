@@ -105,11 +105,19 @@ S:
 NUM_SECTORS = 1
 
 		movem.l	d0-a6,-(sp)
-		link	a5,#-GLOBALDATA_SIZE
-		move.l	sp,a6
+		lea	GlobalDataTest(pc),a6
+;		link	a5,#-GLOBALDATA_SIZE
+;		move.l	sp,a6
+
+;		move.l	a6,a0
+;		move.w	#(GLOBALDATA_SIZE/4)-1,d0
+;.clear		move.l	#0,(a0)+
+;		dbf	d0,.clear
 
 		move.l	4.w,g_ExecBase(a6)
 		move.l	a5,g_SegList(a6)
+
+		kprintf	"Excebase @ %lx",g_ExecBase(a6)
 
 		clr.l	g_ReadOps(a6)
 		clr.l	g_ReadWaits(a6)
@@ -121,6 +129,8 @@ NUM_SECTORS = 1
 		beq	.noBoard
 
 		kprintf	"SPI @ %lx",d0
+
+		bsr	StartTask
 
 		bsr	Card_EnableIRQ
 
@@ -184,14 +194,17 @@ NUM_SECTORS = 1
 
 .done
 		btst	#6,$bfe001
-		bne	.done
+;		bne	.done
 
 		kprintf	"done."
 
 		bsr	Card_DisableIRQ
 
-		move.l	g_SegList(a6),a5
-		unlk	a5
+;		move.l	g_SegList(a6),a5
+;		unlk	a5
+
+		bsr	EndTask
+
 		movem.l	(sp)+,d0-a6
 .nocli		moveq.l	#0,d0
 		rts
@@ -226,6 +239,8 @@ kprintf_sectors	move.l	d0,d7
 		bgt.b	.loop
 		rts
 
+GlobalDataTest	dcb.b	GLOBALDATA_SIZE,$00
+
 	ELSE
 
 		moveq.l	#-1,d0
@@ -236,6 +251,8 @@ kprintf_sectors	move.l	d0,d7
 
 ; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+STACK_SIZE = 4096
+
 	STRUCTURE GlobalData,DD_SIZE
 
 	; AmigaDOS device variables
@@ -243,6 +260,13 @@ kprintf_sectors	move.l	d0,d7
 		APTR	g_SegList
 
 		APTR	g_BoardAddr
+		APTR	g_MainTask
+
+		STRUCT	g_Stack,STACK_SIZE
+		ALIGNLONG
+		STRUCT	g_Task,TC_SIZE
+		ALIGNLONG
+		STRUCT	g_MessagePort,MP_SIZE
 
 		ULONG	g_MotorState
 
@@ -406,10 +430,15 @@ OpenDevice:	; ( unitnum:d0, flags:d1, iob:a1, device:a6 )
 		moveq.l	#1,d0
 		move.l	d0,IO_UNIT(a1)
 
+		tst.l	g_BoardAddr(a6)
+		bne	.nocard
+
 		bsr	GetBoardAddr
 		kprintf	"Replay SPI/SDCARD BoardAddr = %lx",d0
 		move.l	d0,g_BoardAddr(a6)
 		beq	.failed
+
+		bsr	StartTask
 
 		bsr	Card_Init
 		tst.b	g_CardType(a6)
@@ -429,8 +458,10 @@ OpenDevice:	; ( unitnum:d0, flags:d1, iob:a1, device:a6 )
 		kprintf	"    OpenDevice returns %lx",d0
 		rts
 
+.badunit	moveq.l	#TDERR_BadUnitNum,d0
+		bra.b	.error
 .failed		moveq.l	#IOERR_OPENFAIL,d0
-		move.b	d0,IO_ERROR(a1)
+.error		move.b	d0,IO_ERROR(a1)
 		move.l	d0,IO_DEVICE(a1)
 		kprintf	"    OpenDevice failed!"
 		bra	.done
@@ -455,6 +486,7 @@ CloseDevice:	; ( iob:a1, device:a6 ) - returns seglist if unloading
 		bne.b   .keep
 
 ;		bsr	ReleaseHardware		; let go of the board
+		bsr	EndTask
 
 		btst	#LIBB_DELEXP,LIB_FLAGS(a6)
 		beq.b	.keep
@@ -521,6 +553,175 @@ Null:
 	kprintf	"Null()"
 	moveq.l	#0,d0
 	rts
+
+StartTask:	; a6 = device
+		movem.l	d0-a6,-(sp)
+
+		suba.l	a1,a1
+		LINKLIB	_LVOFindTask,g_ExecBase(a6) (a1)
+		move.l	d0,g_MainTask(a6)
+
+	; clear SIGF_SINGLE
+		moveq.l	#0,d0
+		moveq.l	#SIGF_SINGLE,d1
+		LINKLIB	_LVOSetSignal,g_ExecBase(a6) (d0,d1)
+
+		lea	g_Stack(a6),a0
+		lea	g_Task(a6),a1
+		lea	TaskName(pc),a2
+		move.b	#NT_TASK,LN_TYPE(a1)
+		move.b	#-10,LN_PRI(a1)
+		move.l	a2,LN_NAME(a1)
+		move.l	a0,TC_SPLOWER(a1)
+		lea	STACK_SIZE(a0),a0
+		move.l	a0,TC_SPUPPER(a1)
+		move.l	a6,-(a0)
+		move.l	a0,TC_SPREG(a1)
+
+		lea	TC_MEMENTRY(a1),a0
+		NEWLIST	a0
+
+		move.l	a6,TC_Userdata(a1)
+
+		kprintf	"Main : GlobalData = %lx",a6
+
+		lea	IOTask(pc),a2
+		suba.l	a3,a3
+		LINKLIB	_LVOAddTask,g_ExecBase(a6) (a1,a2,a3)
+
+	; TODO check return value
+
+		kprintf	"IO Task added : %lx",d0
+
+		moveq.l	#SIGF_SINGLE,d0
+		LINKLIB	_LVOWait,g_ExecBase(a6) (d0)
+
+		kprintf	"IO Task started!"
+
+		movem.l	(sp)+,d0-a6
+		rts
+
+TaskName:	dc.b	'SDCARD_IOTASK',0
+		even
+
+
+EndTask:	; a6 = device
+		movem.l	d0-a6,-(sp)
+
+		kprintf	"Clear SIGF_SINGLE"
+
+	; clear SIGF_SINGLE
+		moveq.l	#0,d0
+		moveq.l	#SIGF_SINGLE,d1
+		LINKLIB	_LVOSetSignal,g_ExecBase(a6) (d0,d1)
+
+		lea	-IO_SIZE(sp),sp
+		movea.l	sp,a1
+		move.l	a6,IO_DEVICE(a1)
+		move.l	#1,IO_UNIT(a1)		; unit number?
+		move.w	#-1,IO_COMMAND(a1)
+		clr.b	IO_FLAGS(a1)
+		clr.b	IO_ERROR(a1)
+
+		lea	g_MessagePort(a6),a0
+		kprintf	"PutMsg %lx, %lx",a0,a1
+		LINKLIB	_LVOPutMsg,g_ExecBase(a6) (a0,a1)
+
+		kprintf	"putmsg done"
+
+		moveq.l	#SIGF_SINGLE,d0
+		LINKLIB	_LVOWait,g_ExecBase(a6) (d0)
+
+		lea	IO_SIZE(sp),sp
+
+		kprintf	"task signalled"
+
+		movem.l	(sp)+,d0-a6
+		rts
+
+IOTask:		
+		kprintf	"************************* TASK STARTED!"
+
+		move.l	4(sp),a6
+
+		kprintf	"Task : GlobalData = %lx",a6
+
+		suba.l	a1,a1
+		LINKLIB	_LVOFindTask,g_ExecBase(a6) (a1)
+
+		movea.l	d0,a2
+		kprintf	"Task = %lx",d0
+
+		moveq.l	#-1,d0
+		LINKLIB	_LVOAllocSignal,g_ExecBase(a6) (d0)
+
+		kprintf	"Task : MP signal = %lx",d0
+
+		lea	g_MessagePort(a6),a1
+		move.b	#NT_MSGPORT,LN_TYPE(a1)
+		clr.b	LN_PRI(a1)
+		clr.l	LN_NAME(a1)
+		clr.b	MP_FLAGS(a1)
+		move.l	d0,MP_SIGBIT(a1)
+		move.l	a2,MP_SIGTASK(a1)
+		lea	MP_MSGLIST(a1),a0
+		NEWLIST	a0
+
+		kprintf	"Task Setup Done : Signal back!"
+
+		moveq.l	#SIGF_SINGLE,d0
+		move.l	g_MainTask(a6),a1
+		LINKLIB	_LVOSignal,g_ExecBase(a6) (a1,d0)
+
+.nothing	lea	g_MessagePort(a6),a0
+		kprintf	"Task : Wait for message %lx",a0
+		LINKLIB	_LVOWaitPort,g_ExecBase(a6) (a0)
+
+		kprintf	"Task : Got wake up signal!"
+
+		LINKLIB	_LVOGetMsg,g_ExecBase(a6) (a0)
+		tst.l	d0
+		beq.b	.nothing
+
+		kprintf	"Task : Got message = %lx",d0
+
+		movea.l	d0,a1
+		cmp.w	#-1,IO_COMMAND(a1)
+		beq.b	.requestExit
+
+	; Process request
+	kprintf	"processing request.."
+
+		move.b	#NT_MESSAGE,LN_TYPE(a1)
+		LINKLIB	_LVOReplyMsg,g_ExecBase(a6)
+		bra	.nothing
+
+.requestExit
+		kprintf	"Task : Time to quit"
+
+		move.b	g_MessagePort+MP_SIGBIT(a6),d0
+		kprintf	"Task : freeing MP signal = %lx",d0
+		LINKLIB	_LVOFreeSignal,g_ExecBase(a6) (d0)
+
+		move.l	g_MessagePort+MP_SIGTASK(a6),a1
+		moveq.l	#127,d0
+		LINKLIB	_LVOSetTaskPri,g_ExecBase(a6) (a1,d0)
+
+		kprintf	"************************* TASK PRIO CHANGED (from %lx)!",d0
+
+		moveq.l	#SIGF_SINGLE,d0
+		move.l	g_MainTask(a6),a1
+		LINKLIB	_LVOSignal,g_ExecBase(a6) (a1,d0)
+
+		kprintf	"************************* TASK DONE!"
+
+		suba.l	a1,a1
+		LINKLIB	_LVORemTask,g_ExecBase(a6) (a1)
+
+		kprintf	"************************* TASK EXEC OOB!!"
+
+		rts
+
 
 COMMAND	MACRO
 	dc.w	(\1)-(.jmptbl)
@@ -1440,6 +1641,7 @@ Card_Init
 
 		move.b	#CARDTYPE_NONE,g_CardType(a6)
 		btst	#STATUSB_CDET,SPI_STATUS_REG(a5)
+		bra.b	.cardok
 		bne	.cardok
 		kprintf	"SPI:Card_Init: Card NOT Detected"
 		bra	.out
@@ -1849,6 +2051,23 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 .waitrdy	move.w	SPI_BYTE_REG(a5),d0
 		bmi.b	.waitrdy
 		move.b	d0,(a0)+
+
+;		bra.b	.start
+;	cnop	0,4
+;
+;READ_BYTE	MACRO
+;		move.w	#$00ff,SPI_BYTE_REG(a5)
+;		move.w	#0,SPI_BYTE_REG+$10(a5)
+;		move.w	#0,SPI_BYTE_REG+$10(a5)
+;		move.w	#0,SPI_BYTE_REG+$10(a5)
+;		move.w	SPI_BYTE_REG(a5),d0
+;		move.b	d0,(a0)+
+;		ENDM
+;.start
+;	rept	512
+;		READ_BYTE		
+;	endr
+
 
 ;		move.w	#512-1,d6
 ;.byteLoop	moveq.l	#-1,d0
