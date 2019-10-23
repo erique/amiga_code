@@ -687,6 +687,8 @@ CmdRead64
 		lsr.l	#1,d0
 		or.l	d1,d0
 		move.l	IO_LENGTH(a1),d1
+		and.w	#~((1<<9)-1),d1
+		move.l	d1,IO_ACTUAL(a1)
 		lsr.l	#8,d1
 		lsr.l	#1,d1
 		move.l	IO_DATA(a1),a0
