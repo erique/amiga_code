@@ -34,4 +34,9 @@ sd: all flush
 	$(RL) $(RL_TARGET) c:copy sd.device ram:
 	$(RL) $(RL_TARGET) c:execute giggledisk
 
+hdtoolbox: all flush
+	$(RL) $(RL_TARGET) c:protect ram:*.device rwed
+	$(RL) $(RL_TARGET) c:copy sd.device ram:
+	$(RL) $(RL_TARGET) SYS:Tools/HDToolBox ram:sd.device
+
 include ../Makefile.build
