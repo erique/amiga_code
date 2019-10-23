@@ -1686,12 +1686,18 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 		move.w	#512-2,d6
 	; prolog
 		move.w	#$00ff,SPI_BYTE_REG(a5)	; only lower byte used
+		bra.b	.byteLoop
+		cnop	0,4
+
 .byteLoop	move.w	SPI_BYTE_REG(a5),d0
 		bmi.b	.byteLoop		; top-bit-set ? not ready..
 		move.w	#$00ff,SPI_BYTE_REG(a5)	; only lower byte used
 		move.b	d0,(a0)+
+		nop
 		dbf	d6,.byteLoop
-	; epilog				
+	; epilog
+.waitrdy2	btst	#STATUSB_READY,SPI_STATUS_REG+1(a5)
+		beq	.waitrdy2
 .waitrdy	move.w	SPI_BYTE_REG(a5),d0
 		bmi.b	.waitrdy
 		move.b	d0,(a0)+
