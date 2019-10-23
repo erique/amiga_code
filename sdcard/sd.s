@@ -692,7 +692,11 @@ CmdRead64
 		move.l	IO_DATA(a1),a0
 		bsr	Card_ReadM
 
+		tst.b	d0
+		bne	SPI_Error
+
 		bra	TermIO
+
 CmdWrite64
 		kprintf	"CmdWrite64 (%08lx:%08lx, %lx)",IO_ACTUAL(a1),IO_OFFSET(a1),IO_LENGTH(a1)
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
@@ -704,6 +708,11 @@ CmdSeek64
 CmdFormat64
 		kprintf	"CmdFormat64 (%08lx:%08lx, %lx)",IO_ACTUAL(a1),IO_OFFSET(a1),IO_LENGTH(a1)
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
+		bra	TermIO
+
+SPI_Error	kprintf	"SPI:Card result is %lx",d0
+		clr.l	IO_ACTUAL(a1)
+		move.b	#TDERR_DiskChanged,IO_ERROR(a1)		; maybe we should retry here instead?
 		bra	TermIO
 
 ;#define OPERATIONCODE_READ_FORMAT_CAPACITY 0x23
@@ -1443,7 +1452,7 @@ Card_GetCapacity
 
 
 Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
-		movem.l	d0-a6,-(sp)
+		movem.l	d1-a6,-(sp)
 		move.l	g_BoardAddr(a6),a5
 		kprintf	"SPI:Card_ReadM(%08lx, %lu, %lu, %08lx)",a0,d0,d1,a6
 
@@ -1460,7 +1469,7 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 	
 	; if (numSectors == 1) {
 		subq.l	#1,d7
-		bmi	.done
+		bmi	.success
 		beq.b	.single
 
 	; if (MMC_Command(CMD18, sector)) {
@@ -1491,6 +1500,7 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 		dbf	d6,.waittoken
 
 		kprintf	"SPI:Card_ReadM - no data token! (lba=%lu)",d1
+		moveq.l	#-1,d0		; read failure
 		bra	.done
 .gottoken
 
@@ -1516,15 +1526,21 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 	; if (numSectors != 1) {
 		kprintf	"sectors read : %lx",d2
 		subq.l	#1,d2
-		bne.b	.mmc_cmd12
-.done
+		bne	.mmc_cmd12
+		bra	.success
+
+.done	;	kprintf	"SPI:Card_ReadM result is %lx",d0
 		SPI_DisableCard
 
-		movem.l	(sp)+,d0-a6
+		movem.l	(sp)+,d1-a6
 		rts
 
 .offsetfailed	kprintf	"SPI:Card_ReadM CMD17/8 - invalid response 0x%02lX (lba=%lu)",d0,d1
+		moveq.l	#-1,d0		; read failure
 		bra.b	.done
+
+.success	moveq.l	#0,d0
+		bra	.done
 
 .mmc_cmd12
 	; WORKAROUND for no compliance card (Atmel Internal ref. !MMC7 !SD19):
@@ -1545,15 +1561,16 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 		moveq.l	#-1,d0
 .busy		rSPI	d0
 		cmp.b	#$ff,d0
-		beq	.done
+		beq	.success
 		dbf	d7,.busy
 
 		kprintf "SPI:Card_CMD12 (STOP) timeout!"
+		moveq.l	#-1,d0		; read failure
 		bra	.done
 
 
 Card_WriteM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
-		movem.l	d0-a6,-(sp)
+		movem.l	d1-a6,-(sp)
 		move.l	g_BoardAddr(a6),a5
 		kprintf	"SPI:Card_WriteM(%08lx, %lu, %lu, %08lx)",a0,d0,d1,a6
 
@@ -1615,21 +1632,26 @@ Card_WriteM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 		dbf	d5,.waitwrite
 
 		kprintf	"SPI:Card_WriteM - busy write timeout! (lba=%lu)",d1
+		moveq.l	#-1,d0		; write failure
 		bra	.done
 .writedone
-
 		addq.l	#1,d6
 		cmp.l	d6,d7
 		bne	.sectorLoop
-.done
+
+		moveq.l	#0,d0		; write success
+
+.done	;	kprintf	"SPI:Card_WriteM result is %lx",d0
 		SPI_DisableCard
 
-		movem.l	(sp)+,d0-a6
+		movem.l	(sp)+,d1-a6
 		rts
 
 .offsetfailed	kprintf	"SPI:Card_WriteM CMD24 - invalid response 0x%02lX (lba=%lu)",d0,d1
+		moveq.l	#-1,d0		; write failure
 		bra	.done
 .invalidstatus	kprintf	"SPI:Card_WriteM - invalid status 0x%02lX (lba=%lu)",d0,d1
+		moveq.l	#-1,d0		; write failure
 		bra	.done
 
 
