@@ -754,6 +754,7 @@ CmdSCSI		movem.l	d0-a6,-(sp)
 		move.l	IO_DATA(a1),a0
 		kprintf	"CmdSCSI (IO_LENGTH = %lx ; CMD = %lx ; LEN = %lx)",IO_LENGTH(a1),scsi_Command(a0),scsi_CmdLength(a0)
 
+		clr.l	IO_ACTUAL(a1)
 		cmp.l	#scsi_SIZEOF,IO_LENGTH(a1)
 		bhs.b	.sizeok
 		kprintf	"   ***** ILLEGAL SIZE = %lx",IO_LENGTH(a1)
@@ -784,7 +785,10 @@ CmdSCSI		movem.l	d0-a6,-(sp)
 		kprintf	"    Unknown SCSI command"
 
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
-.done		movem.l	(sp)+,d0-a6
+.done		tst.b	IO_ERROR(a1)
+		bne.b	.err
+		move.l	#scsi_SIZEOF,IO_ACTUAL(a1)
+.err		movem.l	(sp)+,d0-a6
 		bra	TermIO
 
 .badaddress	kprintf	"    IOERR_BADADDRESS"
@@ -809,7 +813,6 @@ CmdSCSI		movem.l	d0-a6,-(sp)
 		subq.l	#1,(a3)+
 		move.l	g_BytesPerBlock(a6),(a3)
 
-;		move.l	#4+4,IO_ACTUAL(a1)
 		move.l	#4+4,scsi_Actual(a0)
 		
 		bra	.done
