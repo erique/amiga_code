@@ -566,12 +566,12 @@ CmdDeviceQuery
 		dc.w	TD_WRITE64
 		dc.w	TD_SEEK64
 		dc.w	TD_FORMAT64
-;		dc.w	HD_SCSICMD
-;		dc.w	NSCMD_DEVICEQUERY
-;		dc.w	NSCMD_TD_READ64
-;		dc.w	NSCMD_TD_WRITE64
-;		dc.w	NSCMD_TD_SEEK64
-;		dc.w	NSCMD_TD_FORMAT64
+		dc.w	HD_SCSICMD
+		dc.w	NSCMD_DEVICEQUERY
+		dc.w	NSCMD_TD_READ64
+		dc.w	NSCMD_TD_WRITE64
+		dc.w	NSCMD_TD_SEEK64
+		dc.w	NSCMD_TD_FORMAT64
 		dc.w	0
 
 CmdRead
