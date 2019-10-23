@@ -107,8 +107,15 @@ VDATE	MACRO
 		ULONG	g_MotorState
 
 		UBYTE	g_CardType
+		ALIGNLONG
+
 		ULONG	g_NumBlocks
 		ULONG	g_BytesPerBlock
+
+		ULONG	g_ReadOps
+		ULONG	g_ReadWaits
+		ULONG	g_WriteOps
+		ULONG	g_WriteWaits
 
 		ALIGNLONG
 		LABEL	GLOBALDATA_SIZE
@@ -1471,12 +1478,16 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 		moveq.l	#0,d2
 .sectorLoop
 
+		addq.l	#1,g_ReadOps(a6)
+
 	; while (rSPI(0xFF) != 0xFE)
-		move.w	#1000-1,d6
+		move.w	#30000-1,d6
 .waittoken	moveq.l	#-1,d0
 		rSPI	d0
 		cmp.b	#$fe,d0
 		beq	.gottoken
+		tst.b	$bfe001		; approx 1us
+		addq.l	#1,g_ReadWaits(a6)
 		dbf	d6,.waittoken
 
 		kprintf	"SPI:Card_ReadM - no data token! (lba=%lu)",d1
@@ -1591,12 +1602,16 @@ Card_WriteM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 		cmp.b	#$05,d0
 		bne	.invalidstatus
 
+		addq.l	#1,g_WriteOps(a6)
+
 	; while (rSPI(0xFF) == 0x00) {
-		move.w	#10000-1,d5
+		move.w	#30000-1,d5
 .waitwrite	moveq.l	#-1,d0
 		rSPI	d0
 		tst.b	d0
 		bne	.writedone
+		tst.b	$bfe001		; approx 1us
+		addq.l	#1,g_WriteWaits(a6)
 		dbf	d5,.waitwrite
 
 		kprintf	"SPI:Card_WriteM - busy write timeout! (lba=%lu)",d1
