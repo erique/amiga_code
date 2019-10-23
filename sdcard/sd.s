@@ -531,14 +531,14 @@ NSCMD_TD_FORMAT64	EQU	$C003
 
 BeginIO:	; ( iob: a1, device:a6 )
 	move.l	#*,a0
-	kprintf	"BeginIO( %lx, %lx ) @ %lx ( %lx )",a1,a6,a0,*
+;;	kprintf	"BeginIO( %lx, %lx ) @ %lx ( %lx )",a1,a6,a0,*
 
 	moveq.l	#0,d1
 	moveq.l	#0,d0
 	move.b	IO_FLAGS(a1),d1
 	move.w	IO_COMMAND(a1),d0
 
-	kprintf	"    IO_DEVICE = %lx, IO_UNIT = %lx, IO_FLAGS = %lx, IO_COMMAND = %lx",IO_DEVICE(a1),IO_UNIT(a1),d1,d0
+;;	kprintf	"    IO_DEVICE = %lx, IO_UNIT = %lx, IO_FLAGS = %lx, IO_COMMAND = %lx",IO_DEVICE(a1),IO_UNIT(a1),d1,d0
 
 	move.b	#NT_MESSAGE,LN_TYPE(a1)
 	clr.b	IO_ERROR(a1)
@@ -558,7 +558,7 @@ BeginIO:	; ( iob: a1, device:a6 )
 
 .nsdcmd
 
-	kprintf	"NewStyleDevice"
+;;	kprintf	"NewStyleDevice"
 ;	bra	.nocmd
 
 	lea	.nsdtbl(pc),a0
@@ -706,7 +706,7 @@ CmdDeviceQuery
 		dc.w	0
 
 CmdRead
-		kprintf	"CmdRead"
+;;		kprintf	"CmdRead"
 		clr.l	IO_ACTUAL(a1)
 		bra	CmdRead64
 CmdWrite
@@ -800,7 +800,7 @@ CmdEject
 		move.b	#IOERR_NOCMD,IO_ERROR(a1)
 		bra	TermIO
 CmdRead64
-		kprintf	"CmdRead64 (%08lx:%08lx, %lx)",IO_ACTUAL(a1),IO_OFFSET(a1),IO_LENGTH(a1)
+;;		kprintf	"CmdRead64 (%08lx:%08lx, %lx)",IO_ACTUAL(a1),IO_OFFSET(a1),IO_LENGTH(a1)
 
 		move.l	IO_ACTUAL(a1),d1
 		and.l	#(1<<9)-1,d1
@@ -1162,7 +1162,8 @@ t dc.l	0
 rSPI	MACRO	; a5 = SPI base
 .waitrdy1\@	btst	#STATUSB_READY,SPI_STATUS_REG+1(a5)
 		beq	.waitrdy1\@
-		move.l	\1,t
+
+;;		move.l	\1,t
 		move.w	\1,SPI_BYTE_REG(a5)	; only lower byte used
 
 .waitrdy2\@	btst	#STATUSB_READY,SPI_STATUS_REG+1(a5)
@@ -1170,14 +1171,14 @@ rSPI	MACRO	; a5 = SPI base
 
 		move.w	SPI_BYTE_REG(a5),\1	; upper byte always 0s
 
-		and.l	#$ff,t
-		and.l	#$ff,\1
-;		kprintf	"    SPI_BYTE_REG = %02lx => %02lx",t,\1
+;;		and.l	#$ff,t
+;;		and.l	#$ff,\1
+;;		kprintf	"    SPI_BYTE_REG = %02lx => %02lx",t,\1
 	ENDM
 
 
 rMC_CRC	MACRO	; \1 = data, \2 = crc, \3 loop reg, a5 = SPI base
-;		kprintf	"    SPI_BYTE_REG = %lx",\1
+;;		kprintf	"    SPI_BYTE_REG = %lx",\1
 		move.w	\1,SPI_BYTE_REG(a5)	; only lower byte used
 
 		moveq.l	#8-1,\3
@@ -1200,7 +1201,7 @@ ATTEMPTS = 100
 
 MMC_Command	; d0 = cmd, d1 = arg
 		movem.l	d2/d3/d7,-(sp)
-		kprintf "MMC_Command %02lx %08lx",d0,d1
+;;		kprintf "MMC_Command %02lx %08lx",d0,d1
 		moveq.l	#ATTEMPTS-1,d7
 		moveq.l	#-1,d2
 .getResp1	rSPI	d2
@@ -1238,7 +1239,7 @@ MMC_Command	; d0 = cmd, d1 = arg
 		cmp.b	#$ff,d0
 		dbne	d7,.getResp2
 
-		kprintf	"response = %lx",d0
+;;		kprintf	"response = %02lx",d0
 
 		movem.l	(sp)+,d2/d3/d7
 		rts
@@ -1621,7 +1622,7 @@ Card_GetCapacity
 Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 		movem.l	d1-a6,-(sp)
 		move.l	g_BoardAddr(a6),a5
-		kprintf	"SPI:Card_ReadM(%08lx, %lu, %lu, %08lx)",a0,d0,d1,a6
+;;		kprintf	"SPI:Card_ReadM (%08lx, %lu, %lu, %08lx)",a0,d0,d1,a6
 
 		SPI_EnableCard
 
@@ -1691,7 +1692,7 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 		dbf	d7,.sectorLoop
 
 	; if (numSectors != 1) {
-		kprintf	"sectors read : %lx",d2
+;;		kprintf	"sectors read : %lx",d2
 		subq.l	#1,d2
 		bne	.mmc_cmd12
 		bra	.success
@@ -1739,7 +1740,7 @@ Card_ReadM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 Card_WriteM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 		movem.l	d1-a6,-(sp)
 		move.l	g_BoardAddr(a6),a5
-		kprintf	"SPI:Card_WriteM(%08lx, %lu, %lu, %08lx)",a0,d0,d1,a6
+;;		kprintf	"SPI:Card_WriteM(%08lx, %lu, %lu, %08lx)",a0,d0,d1,a6
 
 		SPI_EnableCard
 
