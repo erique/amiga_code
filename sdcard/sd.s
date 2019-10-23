@@ -76,20 +76,20 @@ S:
 
 	kprintf "d0/a0 = %lx/%lx",d0,a0
 
-	move.l	4.w,a1
-	move.l	ThisTask(a1),a1
-	move.l	pr_CLI(a1),d1
-	tst.l	d1
+		move.l	4.w,a1
+		move.l	ThisTask(a1),a1
+		move.l	pr_CLI(a1),d1
+		tst.l	d1
 		beq	.nocli
 
-	lsl.l	#2,d1
-	movea.l	d1,a1
-	move.l  cli_CommandName(a1),d1
-	lsl.l	#2,d1
-	movea.l	d1,a1
-	moveq.l	#0,d1
-	move.b	(a1)+,d1
-	clr.b	(a1,d1.w)
+		lsl.l	#2,d1
+		movea.l	d1,a1
+		move.l  cli_CommandName(a1),d1
+		lsl.l	#2,d1
+		movea.l	d1,a1
+		moveq.l	#0,d1
+		move.b	(a1)+,d1
+		clr.b	(a1,d1.w)
 
 	kprintf "from cli %s %s",a1,a0
 
@@ -177,8 +177,8 @@ NUM_SECTORS = 1
 		move.l	g_SegList(a6),a5
 		unlk	a5
 		movem.l	(sp)+,d0-a6
-.nocli	moveq.l	#0,d0
-	rts
+.nocli		moveq.l	#0,d0
+		rts
 
 .noBoard
 		kprintf	"GetBoardAddr failed"
@@ -212,8 +212,8 @@ kprintf_sectors	move.l	d0,d7
 
 	ELSE
 
-	moveq.l	#-1,d0
-	rts
+		moveq.l	#-1,d0
+		rts
 
 	ENDC
 
