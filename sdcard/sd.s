@@ -57,6 +57,16 @@ VDATE	MACRO
 
 ; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+rSPI_STATUS	MACRO
+		move.l	d0,-(sp)
+		moveq.l	#0,d0
+		move.w	SPI_STATUS_REG(a5),d0
+		kprintf	"SPI_STATUS_REG = %lx",d0
+		move.l	(sp)+,d0
+		ENDM
+
+; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+S:
 	IFD	ENABLE_KPRINTF
 
 	kprintf	"%cc%c[2J",#$001b001b
@@ -70,7 +80,7 @@ VDATE	MACRO
 	move.l	ThisTask(a1),a1
 	move.l	pr_CLI(a1),d1
 	tst.l	d1
-	beq.b	.nocli
+		beq	.nocli
 
 	lsl.l	#2,d1
 	movea.l	d1,a1
@@ -83,8 +93,122 @@ VDATE	MACRO
 
 	kprintf "from cli %s %s",a1,a0
 
+;-----------------------------------------------------------
+NUM_SECTORS = 1
+
+		movem.l	d0-a6,-(sp)
+		link	a5,#-GLOBALDATA_SIZE
+		move.l	sp,a6
+
+		move.l	4.w,g_ExecBase(a6)
+		move.l	a5,g_SegList(a6)
+
+		clr.l	g_ReadOps(a6)
+		clr.l	g_ReadWaits(a6)
+		clr.l	g_WriteOps(a6)
+		clr.l	g_WriteWaits(a6)
+
+		bsr	GetBoardAddr
+		move.l	d0,g_BoardAddr(a6)
+		beq	.noBoard
+
+		kprintf	"SPI @ %lx",d0
+
+		movea.l	d0,a5
+
+		rSPI_STATUS
+
+		bsr	Card_Init
+		tst.b	g_CardType(a6)
+		beq	.done
+
+		bsr	Card_GetCapacity
+
+;		move.l	g_NumBlocks(a6),d6
+;		and.b	#~NUM_SECTORS,d6
+		move.l	#$10000,d6
+		kprintf	"num sectors = %lx",d6
+		moveq.l	#0,d7
+
+.loop		kprintf	"Offset = %08lx",d7
+		lea	sectorA,a0
+		move.l	d7,d0
+		move.l	#NUM_SECTORS,d1
+		bsr	Card_ReadM
+
+		lea	sectorA,a0
+		moveq.l	#NUM_SECTORS,d0
+		bsr	kprintf_sectors
+
+;		lea	sectorA,a0
+;		move.l	d7,d0
+;		move.l	#NUM_SECTORS,d1
+;		bsr	Card_WriteM
+
+;		lea	sectorB,a0
+;		move.l	d7,d0
+;		move.l	#NUM_SECTORS,d1
+;		bsr	Card_ReadM
+;
+;;		lea	sectorB,a0
+;;		moveq.l	#NUM_SECTORS,d0
+;;		bsr	kprintf_sectors
+;
+;		lea	sectorA,a0
+;		lea	sectorB,a1
+;
+;		move.w	#512*NUM_SECTORS/4-1,d0
+;.compare	cmp.l	(a0)+,(a1)+
+;		bne	.cmpFailed
+;		dbf	d0,.compare
+;
+		add.l	#NUM_SECTORS,d7
+		cmp.l	d7,d6
+;		bhi.b	.loop
+
+		kprintf	";-----------------------------------------------------------"
+		kprintf	"g_ReadOps = %lx",g_ReadOps(a6)
+		kprintf	"g_ReadWaits = %lx",g_ReadWaits(a6)
+		kprintf	"g_WriteOps = %lx",g_WriteOps(a6)
+		kprintf	"g_WriteWaits = %lx",g_WriteWaits(a6)
+
+.done		kprintf	"done."
+
+		move.l	g_SegList(a6),a5
+		unlk	a5
+		movem.l	(sp)+,d0-a6
 .nocli	moveq.l	#0,d0
 	rts
+
+.noBoard
+		kprintf	"GetBoardAddr failed"
+		bra.b	.done
+
+.cmpFailed	subq.l	#4,a0
+		move.l	a0,d0
+		lea	sectorA,a0
+		sub.l	a0,d0
+		move.l	d0,d1
+		move.l	d0,d2
+		lsr.l	#8,d1
+		lsr.l	d1
+		and.l	#512-1,d2
+
+		kprintf	"read/write error - mismatch at %lx (sector %lx : offset %lx)",d0,d1,d2
+		bra	.done
+
+kprintf_sectors	move.l	d0,d7
+		moveq.l	#0,d1
+.loop		moveq.l	#0,d0
+.print		kprintf	"%4ld * %4ld / %08lx : %08lx %08lx %08lx %08lx",d1,d0,a0,(a0),4(a0),8(a0),12(a0)
+		adda.w	#16,a0
+		add.w	#16,d0
+		cmp.w	#512,d0
+		bne	.print
+		addq.l	#1,d1
+		cmp.w	d1,d7
+		bgt.b	.loop
+		rts
 
 	ELSE
 
@@ -1023,13 +1147,13 @@ CMD61 = $7d        ; --
 CMD62 = $7e        ; --
 CMD63 = $7f        ; --
 
-rSPI_STATUS	MACRO
-		move.l	d0,-(sp)
-		moveq.l	#0,d0
-		move.w	SPI_STATUS_REG(a5),d0
-		kprintf	"SPI_STATUS_REG = %lx",d0
-		move.l	(sp)+,d0
-		ENDM
+;rSPI_STATUS	MACRO
+;		move.l	d0,-(sp)
+;		moveq.l	#0,d0
+;		move.w	SPI_STATUS_REG(a5),d0
+;		kprintf	"SPI_STATUS_REG = %lx",d0
+;		move.l	(sp)+,d0
+;		ENDM
 
 ; %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -1701,3 +1825,6 @@ Card_WriteM	; (d0 = sector offset, d1 = sector length, a0 = buffer, a6 = device)
 
 end:
 
+	section bss,bss_f
+sectorA		ds.b	512*NUM_SECTORS
+sectorB		ds.b	512*NUM_SECTORS

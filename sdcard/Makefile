@@ -27,7 +27,7 @@ flush:
 	$(RL) $(RL_TARGET) c:avail flush
 
 test: all
-	$(RL) $(RL_TARGET) testsd.exe
+	$(RL) $(RL_TARGET) sd.device
 
 sd: all flush
 	$(RL) $(RL_TARGET) c:protect ram:*.device rwed
