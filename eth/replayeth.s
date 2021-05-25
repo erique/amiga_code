@@ -394,10 +394,12 @@ Init:		dc.l	GLOBALDATA_SIZE		; data space size
 		; everything but d0/d1/a0/a1 must be preserved
 		; device ptr = a6
 
+		bsr	AcquireHardware
+		beq	.hwfailed
 		bsr	SetupGlobalSANAII
 		beq	.sanafailed
 		bsr	SetupGlobalENC624
-		beq	.hwfailed
+		beq	.encfailed
 
 		move.l	a6,d0			; restore device ptr == return value
 		kprintf	"   device driver initialized (d0 = %lx)",d0
@@ -412,11 +414,15 @@ Init:		dc.l	GLOBALDATA_SIZE		; data space size
 		kprintf	"   requires V39+"
 		bra.b	.error
 
+.hwfailed
+		kprintf	"   hardware acquire failed"
+		bra.b	.error
+
 .sanafailed
 		kprintf	"   SANA-II failed"
 		bra.b	.error
 
-.hwfailed	bsr	FreeSANAResources
+.encfailed	bsr	FreeSANAResources
 		kprintf	"   hardware setup failed"
 
 .error		bsr	FreeDevice
@@ -432,9 +438,6 @@ OpenDevice:	; ( unitnum:d0, flags:d1, iob:a1, device:a6 )
 
 	bsr	OpenUnit
 	move.l	d0,IO_UNIT(a1)
-	beq.b	.failed
-
-	bsr	AcquireHardware
 	beq.b	.failed
 
 	; if returning to a CONFIGURED device, then enable NIC, unless PAUSED
